@@ -149,6 +149,25 @@ All matching the literature survey in
 Suunto's own track is only accurate to ±20–30 m absolutely, so we treat it as a
 shape reference, not ground truth.
 
+### How close to Suunto can we actually get?
+
+Since direction isn't in the IMU, closeness to Suunto's track is driven entirely
+by how many **external position fixes** we can pin the path through (surface GPS
+marks, acoustic beacons, a buddy's fixes) — `apply_waypoints` warps the track
+through them, and `scripts/closeness.py` measures the trade-off:
+
+| position fixes | 2 | 3 | 5 | 9 | 17 | 33 |
+|---|---|---|---|---|---|---|
+| median ATE, straight-line between fixes | 27 | 23 | **11** | **6** | 3 | 1.5 |
+| median ATE, IMU shape between fixes | 25 | 28 | 19 | 21 | 13 | 6 |
+
+Two takeaways: (1) with ~9–17 fixes we're already inside Suunto's own ±20–30 m
+absolute accuracy; (2) **straight-line interpolation between fixes beats the IMU
+horizontal shape** — because the IMU direction is noise, its "wiggle" between
+fixes adds wrong detours. So the recipe for closest-to-Suunto is *fixes +
+interpolation*, with the IMU supplying depth (Z), distance/scale, and cadence —
+not the route geometry. Without any fixes, the shape can't match (the ceiling).
+
 ## Roadmap
 
 See [`docs/research-dead-reckoning.md`](docs/research-dead-reckoning.md) for the

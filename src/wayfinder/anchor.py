@@ -68,6 +68,42 @@ def apply_anchors(track: Track, a, b) -> Track:
                    meta={**track.meta, "anchored": True, "anchor_scale": float(s)})
 
 
+def apply_waypoints(track: Track, indices, points) -> Track:
+    """Warp the track to pass through several known waypoints.
+
+    ``indices`` are sample indices into the track (sorted, first should be 0 and
+    last ``n-1`` to pin both ends); ``points`` are the matching (x, y) targets.
+    Each segment between consecutive waypoints is independently similarity-warped
+    to hit its two endpoints (shared endpoints keep the path continuous), so the
+    IMU-derived *shape* fills in between fixes. Degenerate segments (a loop
+    returning to its start) fall back to a translation + linear ramp, which still
+    hits both endpoints but carries no shape.
+
+    This is the aided-INS pattern: sparse absolute fixes (surface GPS, acoustic
+    beacons, buddy marks) bound the drift; the more fixes, the closer to truth.
+    """
+    idx = np.asarray(indices, int)
+    pts = np.asarray(points, float)
+    if len(idx) < 2:
+        raise ValueError("need >= 2 waypoints")
+    xy = track.xy
+    out = xy.copy()
+    for (i0, i1, a, b) in zip(idx[:-1], idx[1:], pts[:-1], pts[1:]):
+        seg = xy[i0:i1 + 1]
+        try:
+            s, r, t = similarity_from_endpoints(seg[0], seg[-1], a, b)
+            out[i0:i1 + 1] = (s * (r @ seg.T)).T + t
+        except ValueError:
+            base = seg - seg[0] + a
+            resid = b - base[-1]
+            ramp = np.linspace(0.0, 1.0, len(seg))[:, None]
+            out[i0:i1 + 1] = base + resid * ramp
+    pos = track.xyz.copy()
+    pos[:, :2] = out
+    return replace(track, xyz=pos,
+                   meta={**track.meta, "waypoints": int(len(idx))})
+
+
 def scale_to_distance(track: Track, target_distance: float) -> Track:
     """Uniformly scale the horizontal track so its path length == target (m).
 

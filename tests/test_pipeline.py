@@ -120,6 +120,16 @@ def test_apply_anchors_rejects_loop():
         apply_anchors(track, np.zeros(2), np.array([10.0, 0.0]))
 
 
+def test_apply_waypoints_passes_through_all():
+    from wayfinder.anchor import apply_waypoints
+    track = _demo_track(n=101)
+    idx = [0, 25, 50, 75, 100]
+    pts = np.array([[0.0, 0.0], [3.0, 1.0], [6.0, -2.0], [2.0, 5.0], [9.0, 9.0]])
+    out = apply_waypoints(track, idx, pts)
+    for i, p in zip(idx, pts):
+        assert np.allclose(out.xy[i], p, atol=1e-6)
+
+
 def test_scale_to_distance_hits_target():
     track = _demo_track()
     out = scale_to_distance(track, 42.0)

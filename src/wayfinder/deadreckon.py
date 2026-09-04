@@ -46,6 +46,10 @@ class Track:
     meta: dict
 
     @property
+    def n(self) -> int:
+        return len(self.t)
+
+    @property
     def xy(self) -> np.ndarray:
         return self.xyz[:, :2]
 
