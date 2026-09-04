@@ -34,6 +34,7 @@ class Comparison:
     path_len_ratio: float
     dtw: float
     frechet: float
+    distance_error: float   # (our path length - DiveRouteDistance) / DiveRouteDistance
     scale: float
     n: int
     aligned_est: np.ndarray  # (M, 2) our XY after alignment
@@ -142,9 +143,15 @@ def compare(track: Track, ref: ReferenceTrack, *, scale: bool = False,
     dtw = _dtw(a_s, r_s)
     frechet = _frechet(a_s, r_s)
 
+    if ref.route_distance:
+        distance_error = (track.path_length - ref.route_distance) / ref.route_distance
+    else:
+        distance_error = float("nan")
+
     return Comparison(
         ate_rmse=ate, endpoint_err=endpoint, drift_rate=drift_rate,
-        path_len_ratio=plr, dtw=dtw, frechet=frechet, scale=float(s), n=m,
+        path_len_ratio=plr, dtw=dtw, frechet=frechet,
+        distance_error=float(distance_error), scale=float(s), n=m,
         aligned_est=aligned, ref_xy=rxy,
         t=np.linspace(ref.t[0], ref.t[-1], m),
     )

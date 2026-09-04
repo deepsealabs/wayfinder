@@ -85,7 +85,7 @@ def detect_cadence(series: DiveSeries, *, band: tuple = (0.4, 1.6),
     return Cadence(inst_freq=inst_freq, envelope=env, active=active, band=band)
 
 
-def cadence_speed(series: DiveSeries, *, distance_per_kick: float = 0.6,
+def cadence_speed(series: DiveSeries, *, distance_per_kick: float = 0.2,
                   glide_speed: float = 0.05,
                   cadence: Cadence | None = None, **kw) -> np.ndarray:
     """Forward speed from kick cadence: ``speed = distance_per_kick · cadence``.

@@ -9,8 +9,10 @@ import numpy as np
 import pytest
 
 from wayfinder import (DiveSeries, dead_reckon, dead_reckon_model,
-                       estimate_orientation, compare, velocity)
+                       estimate_orientation, compare, velocity,
+                       apply_anchors, scale_to_distance)
 from wayfinder import quaternion as Q
+from wayfinder.anchor import similarity_from_endpoints
 from wayfinder.io import parse_bin, load_reference
 
 HERE = os.path.dirname(__file__)
@@ -80,6 +82,48 @@ def test_cadence_detects_synthetic_kick():
                    np.zeros_like(t), name="kick")
     cad = velocity.detect_cadence(s)
     assert 0.8 < np.median(cad.inst_freq[cad.active]) < 1.2
+
+
+def _demo_track(n=100):
+    s = _still_series(n=n)
+    # Give it a curved path via a constant-speed model with a slow turn.
+    t = np.arange(n) / 10.0
+    gyro = np.zeros((n, 3))
+    gyro[:, 2] = 20.0  # 20 deg/s yaw -> curves
+    s = DiveSeries(t, s.accel, gyro, s.mag, s.depth, name="demo")
+    return dead_reckon_model(s, speed="constant", speed_kw={"speed": 0.5},
+                             vertical="integrate")
+
+
+def test_similarity_from_endpoints_exact():
+    p0, pN = np.array([0.0, 0.0]), np.array([2.0, 0.0])
+    a, b = np.array([10.0, 10.0]), np.array([10.0, 16.0])  # scale 3, rot 90deg
+    s, r, t = similarity_from_endpoints(p0, pN, a, b)
+    assert s == pytest.approx(3.0)
+    assert np.allclose(s * (r @ p0) + t, a)
+    assert np.allclose(s * (r @ pN) + t, b)
+
+
+def test_apply_anchors_pins_endpoints():
+    track = _demo_track()
+    a, b = np.array([5.0, -3.0]), np.array([20.0, 8.0])
+    out = apply_anchors(track, a, b)
+    assert np.allclose(out.xy[0], a)
+    assert np.allclose(out.xy[-1], b)
+    assert out.xyz[:, 2].tolist() == track.xyz[:, 2].tolist()  # Z untouched
+
+
+def test_apply_anchors_rejects_loop():
+    track = _demo_track()
+    track.xyz[-1, :2] = track.xyz[0, :2]  # force start == end
+    with pytest.raises(ValueError):
+        apply_anchors(track, np.zeros(2), np.array([10.0, 0.0]))
+
+
+def test_scale_to_distance_hits_target():
+    track = _demo_track()
+    out = scale_to_distance(track, 42.0)
+    assert out.path_length == pytest.approx(42.0, rel=1e-6)
 
 
 @pytest.mark.skipif(not BINS, reason="no dive fixtures available")

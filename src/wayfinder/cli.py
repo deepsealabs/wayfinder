@@ -32,10 +32,17 @@ def build_parser() -> argparse.ArgumentParser:
                    help="forward speed m/s for --speed-model constant")
     p.add_argument("--distance-per-kick", type=float, default=0.6,
                    help="glide distance per fin kick, m (--speed-model cadence)")
+    p.add_argument("--scale-to-distance", action="store_true",
+                   help="scale the track to Suunto's DiveRouteDistance (the "
+                        "authoritative travelled distance; needs --ref)")
+    p.add_argument("--anchor-endpoints", action="store_true",
+                   help="pin the track's start/end to the reference track's "
+                        "endpoints (demonstrates the two-GPS-fix boundary "
+                        "constraint; needs --ref)")
     p.add_argument("--calibrate-to-ref", action="store_true",
                    help="rescale model speed so path length matches the "
-                        "reference (stand-in for the future GPS-distance "
-                        "constraint; needs --ref)")
+                        "reference track (older stand-in; prefer "
+                        "--scale-to-distance)")
     p.add_argument("--mag", action="store_true",
                    help="fuse the (uncalibrated) magnetometer for heading; off "
                         "by default because it currently degrades results")
@@ -66,6 +73,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     else:
         track = _model_track(series, ref, args)
+
+    track = _apply_boundary(track, ref, args)
     print(f"[track]  method={args.method} path length {track.path_length:.0f} m",
           file=sys.stderr)
 
@@ -104,6 +113,27 @@ def _model_track(series, ref, args):
 
     return dead_reckon_model(series, quat=quat, speed=speed,
                              vertical=args.vertical)
+
+
+def _apply_boundary(track, ref, args):
+    """Apply the requested boundary constraint(s) to the track."""
+    from .anchor import apply_anchors, scale_to_distance
+
+    if args.scale_to_distance:
+        if ref is None or not ref.route_distance:
+            print("[warn]   --scale-to-distance needs --ref with a "
+                  "DiveRouteDistance", file=sys.stderr)
+        else:
+            track = scale_to_distance(track, ref.route_distance)
+    if args.anchor_endpoints:
+        if ref is None:
+            print("[warn]   --anchor-endpoints needs --ref", file=sys.stderr)
+        else:
+            try:
+                track = apply_anchors(track, ref.xy[0], ref.xy[-1])
+            except ValueError as e:
+                print(f"[warn]   anchoring skipped: {e}", file=sys.stderr)
+    return track
 
 
 def _write_csv(path: str, track) -> None:

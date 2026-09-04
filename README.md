@@ -120,6 +120,24 @@ All matching the literature survey in
 - **Heading from a wrist sensor is the current ceiling.** The wrist rotates
   independently of travel direction and gyro yaw drifts, so the track's *turn
   structure* is only roughly right — the next thing to improve.
+- **Two endpoint anchors ≈ knowing the whole track.** Pinning the water-frame
+  track to just its two end fixes (a similarity rubber-sheet, [`anchor.py`](src/wayfinder/anchor.py))
+  lands within ~6% ATE of the *oracle* full-trajectory alignment that needs the
+  entire Suunto track (median 25.1 m vs 23.6 m). That is what real GPS surface
+  bookends buy you — and it's the constraint Suunto reportedly uses.
+
+### What Suunto data we validate against
+
+- **`DiveRoute` X/Y/Z** — the computed track; the target for all shape/drift metrics.
+- **`DiveRouteDistance`** — Suunto's authoritative total distance; we scale the
+  velocity model to it (`--scale-to-distance`) and report a `distance_error`. The
+  cadence model's *natural* distance is a consistent ~3× off (right relative
+  effort, one global scale), which this pins exactly.
+- **GPS surface fixes are unusable in this corpus** — they're scrubbed to a
+  0.2–0.5 m spread while the dive covers up to 44 m, and most dives only carry
+  exit fixes. So the two-anchor constraint is *built and validated with stand-in
+  anchors* (the reference endpoints), ready for dives with real GPS bookends.
+- `Speed`/`Cadence`/`Distance` per-sample fields are null for diving.
 
 Suunto's own track is only accurate to ±20–30 m absolutely, so we treat it as a
 shape reference, not ground truth.
@@ -132,9 +150,10 @@ full survey. Build order:
 1. ✅ Naive strapdown baseline + validation harness.
 2. ✅ Water-frame **velocity model** (constant / kick-cadence speed along fused
    heading) — fixes the over-travel; now the default method.
-3. **Two-anchor GPS boundary constraint** (rubber-sheet the track between the
-   entry/exit surface fixes, solving for heading bias + constant current) — the
-   biggest win per line of code, and what Suunto reportedly does. Also sets the
-   speed scale, removing the `--calibrate-to-ref` stand-in.
-4. Magnetometer calibration + better travel-direction estimate; optionally a
-   learned velocity regressor (RoNIN/TLIO style).
+3. ✅ **Boundary constraints** — the two-anchor similarity rubber-sheet
+   (`--anchor-endpoints`) and `DiveRouteDistance` scaling (`--scale-to-distance`).
+   The mechanism is ready; validating it on *real* GPS bookends needs dives whose
+   exports keep unscrubbed surface fixes.
+4. Better travel-direction (the wrist-heading ceiling) + magnetometer calibration;
+   an RTS smoother / batch optimiser that solves for heading bias + constant
+   current from real anchors; optionally a learned velocity regressor (RoNIN/TLIO).

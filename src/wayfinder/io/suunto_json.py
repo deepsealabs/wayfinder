@@ -25,11 +25,16 @@ class ReferenceTrack:
     t : (M,) seconds from the first route sample.
     xyz : (M, 3) metres; columns X, Y, Z (Z negative down).
     origin : optional (lat, lon, alt) of DiveRouteOrigin if present (often 0s).
+    route_distance : Suunto's ``DiveRouteDistance`` (m), the authoritative total
+        horizontal path length, computed on the full-resolution internal track
+        (so it exceeds the summed length of the down-sampled exported ``xy``).
+        None if absent.
     """
 
     t: np.ndarray
     xyz: np.ndarray
     origin: tuple | None = None
+    route_distance: float | None = None
     name: str | None = None
 
     @property
@@ -72,10 +77,13 @@ def load_reference(path: str, name: str | None = None) -> ReferenceTrack:
     ts: list[str] = []
     xyz: list[tuple] = []
     origin = None
+    route_distance = None
     for s in samples:
         if "DiveRouteOrigin" in s:
             o = s["DiveRouteOrigin"]
             origin = (o.get("Latitude"), o.get("Longitude"), o.get("Altitude"))
+        if "DiveRouteDistance" in s:
+            route_distance = float(s["DiveRouteDistance"])
         route = s.get("DiveRoute")
         if route is None:
             continue
@@ -89,5 +97,6 @@ def load_reference(path: str, name: str | None = None) -> ReferenceTrack:
         t=_parse_iso_seconds(ts),
         xyz=np.asarray(xyz, float),
         origin=origin,
+        route_distance=route_distance,
         name=name,
     )
