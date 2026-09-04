@@ -126,6 +126,17 @@ def test_scale_to_distance_hits_target():
     assert out.path_length == pytest.approx(42.0, rel=1e-6)
 
 
+def test_directional_agreement_bounds():
+    from wayfinder.diagnostics import directional_agreement
+    # Identical paths -> agreement ~ +1.
+    t = np.linspace(0, 1, 200)
+    path = np.column_stack([np.cos(2 * t), np.sin(2 * t)])
+    assert directional_agreement(path, path) == pytest.approx(1.0, abs=1e-6)
+    # Same positions but every step negated -> travel heading opposed -> ~ -1.
+    opposed = 2 * path[0] - path
+    assert directional_agreement(opposed, path) < -0.9
+
+
 @pytest.mark.skipif(not BINS, reason="no dive fixtures available")
 def test_real_dive_end_to_end():
     name = os.path.splitext(os.path.basename(BINS[0]))[0]

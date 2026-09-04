@@ -35,6 +35,7 @@ class Comparison:
     dtw: float
     frechet: float
     distance_error: float   # (our path length - DiveRouteDistance) / DiveRouteDistance
+    heading_agreement: float  # mean cos(Δtravel-heading), [-1,1]; ~0 = direction not recovered
     scale: float
     n: int
     aligned_est: np.ndarray  # (M, 2) our XY after alignment
@@ -148,10 +149,14 @@ def compare(track: Track, ref: ReferenceTrack, *, scale: bool = False,
     else:
         distance_error = float("nan")
 
+    from .diagnostics import directional_agreement
+    heading_agreement = directional_agreement(aligned, rxy)
+
     return Comparison(
         ate_rmse=ate, endpoint_err=endpoint, drift_rate=drift_rate,
         path_len_ratio=plr, dtw=dtw, frechet=frechet,
-        distance_error=float(distance_error), scale=float(s), n=m,
+        distance_error=float(distance_error),
+        heading_agreement=heading_agreement, scale=float(s), n=m,
         aligned_est=aligned, ref_xy=rxy,
         t=np.linspace(ref.t[0], ref.t[-1], m),
     )

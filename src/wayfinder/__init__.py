@@ -12,12 +12,13 @@ from .deadreckon import Track, dead_reckon, dead_reckon_model
 from .orientation import estimate_orientation, estimate_gyro_bias
 from .validate import Comparison, compare
 from . import velocity
+from . import diagnostics
 from .anchor import apply_anchors, scale_to_distance
 
 __all__ = [
     "DiveSeries", "GRAVITY", "Track", "dead_reckon", "dead_reckon_model",
     "estimate_orientation", "estimate_gyro_bias", "Comparison", "compare",
-    "velocity", "apply_anchors", "scale_to_distance",
+    "velocity", "diagnostics", "apply_anchors", "scale_to_distance",
 ]
 
 __version__ = "0.1.0"

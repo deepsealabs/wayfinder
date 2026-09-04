@@ -46,8 +46,8 @@ def main() -> int:
         print(f"no .bin/.json pairs in {args.dir}", file=sys.stderr)
         return 1
 
-    hdr = (f"{'dive':14s} {'min':>4s} {'ATE':>7s} {'endpt':>7s} {'drift':>6s} "
-           f"{'DTW':>6s} {'Fréch':>6s} {'distErr':>7s}")
+    hdr = (f"{'dive':14s} {'min':>4s} {'ATE':>7s} {'endpt':>7s} {'DTW':>6s} "
+           f"{'Fréch':>6s} {'distErr':>7s} {'hdgAgree':>8s}")
     print(f"method={args.method}")
     print(hdr)
     print("-" * len(hdr))
@@ -63,8 +63,8 @@ def main() -> int:
         c = compare(track, ref)
         de = f"{c.distance_error*100:+6.0f}%" if np.isfinite(c.distance_error) else "     --"
         print(f"{name:14s} {series.duration/60:4.0f} {c.ate_rmse:7.1f} "
-              f"{c.endpoint_err:7.1f} {c.drift_rate:6.2f} "
-              f"{c.dtw:6.2f} {c.frechet:6.1f} {de:>7s}")
+              f"{c.endpoint_err:7.1f} {c.dtw:6.2f} {c.frechet:6.1f} "
+              f"{de:>7s} {c.heading_agreement:+8.2f}")
         if args.plots:
             from wayfinder.plotting import plot_comparison
             plot_comparison(track, c, title=name,

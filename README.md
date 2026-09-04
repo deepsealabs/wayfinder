@@ -117,9 +117,16 @@ All matching the literature survey in
 - **The uncalibrated magnetometer hurts.** Steel tanks and the watch's own fields
   distort it; gyro-only heading beats it on every dive, so mag fusion is off by
   default until hard/soft-iron calibration lands.
-- **Heading from a wrist sensor is the current ceiling.** The wrist rotates
-  independently of travel direction and gyro yaw drifts, so the track's *turn
-  structure* is only roughly right — the next thing to improve.
+- **Travel direction is not recoverable from a wrist IMU** — the hard ceiling,
+  documented in [`docs/heading-ceiling.md`](docs/heading-ceiling.md). The device's
+  yaw is *decoupled* from where the diver swims (the wrist rotates freely), and
+  neither any geometric signal nor a cross-validated learned model correlates with
+  Suunto's travel heading (turn-rate corr ≈ 0), while a depth positive control is
+  +0.99. So `compare` now reports **`heading_agreement`** (mean cos of travel-angle
+  error, ~0 here) — the honest metric that scale-aligned DTW/ATE hide. Depth,
+  distance, and cadence are recoverable; the route's *shape* is not, from this
+  sensor. Breaking it needs a body-mounted sensor or GPS-truth motion labels, not
+  a better filter or mag calibration.
 - **Two endpoint anchors ≈ knowing the whole track.** Pinning the water-frame
   track to just its two end fixes (a similarity rubber-sheet, [`anchor.py`](src/wayfinder/anchor.py))
   lands within ~6% ATE of the *oracle* full-trajectory alignment that needs the
@@ -154,6 +161,10 @@ full survey. Build order:
    (`--anchor-endpoints`) and `DiveRouteDistance` scaling (`--scale-to-distance`).
    The mechanism is ready; validating it on *real* GPS bookends needs dives whose
    exports keep unscrubbed surface fixes.
-4. Better travel-direction (the wrist-heading ceiling) + magnetometer calibration;
-   an RTS smoother / batch optimiser that solves for heading bias + constant
-   current from real anchors; optionally a learned velocity regressor (RoNIN/TLIO).
+4. ⚠️ **Wrist-heading ceiling — investigated, appears fundamental**
+   ([`docs/heading-ceiling.md`](docs/heading-ceiling.md)): travel direction isn't
+   recoverable from the wrist IMU (geometric *or* learned), so route *shape* can't
+   be reconstructed from this sensor. Ways forward: a body-mounted sensor (re-run
+   `scripts/heading_probe.py` to test), a deep model trained on GPS-truth-labelled
+   dives, or shipping the depth + distance + cadence products with the route shown
+   only as an approximate scribble that snaps to real GPS bookends.
