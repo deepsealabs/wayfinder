@@ -40,6 +40,22 @@ rate / directional agreement), which is invariant to each dive's arbitrary frame
 Reproduce: `python scripts/heading_probe.py ../nautic-captures-backup`, and the
 `heading_agreement` field now reported by `wayfinder.validate.compare`.
 
+## Confirmed with *real* GPS anchors (not the circular stand-in)
+
+The raw `.bin` preserves genuine surface GPS (the `.json` scrubs it). Dive
+`1787991757` has a real entry cluster (7 fixes at the surface, t=25–51 s, before
+descent) and a real exit cluster — two independent anchors, ~9 m apart. Pinning
+both our IMU track and Suunto's DiveRoute to those same two real fixes:
+
+- IMU shape between the anchors vs Suunto: **ATE 39 m**
+- straight line between the anchors vs Suunto: **ATE 27 m**
+
+Our reconstructed shape is *worse than a straight line* even with two real,
+Suunto-independent anchors — and neither resembles Suunto's coherent loop,
+because Suunto's shape comes from its learned model distributing the GPS
+constraint over the whole path, not from recoverable IMU heading. Reproduce with
+`scripts/real_gps_anchor.py ../nautic-captures-backup/1787991757.bin`.
+
 ## Why this happens
 
 - **The wrist is not the body.** A recreational diver's wrist rotates
