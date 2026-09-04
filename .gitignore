@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Dive data (kept out of the repo; large + not ours to redistribute)
+*.bin
+*.json
+!package.json
+out/
+*.png
+
+# OS
+.DS_Store
