@@ -8,13 +8,15 @@ method and its (large, expected) limitations.
 from __future__ import annotations
 
 from .series import DiveSeries, GRAVITY
-from .deadreckon import Track, dead_reckon
+from .deadreckon import Track, dead_reckon, dead_reckon_model
 from .orientation import estimate_orientation, estimate_gyro_bias
 from .validate import Comparison, compare
+from . import velocity
 
 __all__ = [
-    "DiveSeries", "GRAVITY", "Track", "dead_reckon",
+    "DiveSeries", "GRAVITY", "Track", "dead_reckon", "dead_reckon_model",
     "estimate_orientation", "estimate_gyro_bias", "Comparison", "compare",
+    "velocity",
 ]
 
 __version__ = "0.1.0"

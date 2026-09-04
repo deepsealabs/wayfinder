@@ -143,6 +143,80 @@ def dead_reckon(
     )
 
 
+def dead_reckon_model(
+    series: DiveSeries,
+    *,
+    quat: np.ndarray | None = None,
+    use_mag: bool = False,
+    speed: np.ndarray | float | str = "cadence",
+    vertical: str = "depth",
+    speed_kw: dict | None = None,
+) -> Track:
+    """Model-based (water-frame) dead reckoning: heading × a speed model.
+
+    Instead of double-integrating acceleration (which diverges), integrate an
+    assumed forward speed along the gyro-fused heading::
+
+        p(t) = ∫ speed(t) · [cos ψ(t), sin ψ(t)] dt
+
+    This is the real v1 (research §4 / Phase 2): the track shape comes from the
+    well-observed *turn structure* (heading changes) and a speed model, not from
+    fragile linear acceleration. The result is **water-frame** (current not
+    removed) and its absolute scale is a free parameter (see
+    :func:`wayfinder.velocity.calibrate_scale`).
+
+    Parameters
+    ----------
+    speed : an (N,) speed array (m/s), a constant float, or a model name
+        (``'cadence'`` or ``'constant'``).
+    speed_kw : extra kwargs forwarded to the chosen speed model.
+    vertical : ``'depth'`` sets Z from the depth channel (recommended).
+    """
+    from . import velocity as vel
+
+    if quat is None:
+        quat = ori.estimate_orientation(series, use_mag=use_mag)
+    psi = vel.heading(series, quat)
+
+    speed_kw = speed_kw or {}
+    if isinstance(speed, str):
+        if speed == "cadence":
+            spd = vel.cadence_speed(series, **speed_kw)
+        elif speed == "constant":
+            spd = vel.constant_speed(series, **speed_kw)
+        else:
+            raise ValueError(f"unknown speed model {speed!r}")
+    elif np.isscalar(speed):
+        spd = vel.constant_speed(series, float(speed))
+    else:
+        spd = np.asarray(speed, float)
+
+    t = series.t
+    vx = spd * np.cos(psi)
+    vy = spd * np.sin(psi)
+    vel_w = np.zeros((series.n, 3))
+    vel_w[:, 0] = vx
+    vel_w[:, 1] = vy
+
+    pos = np.zeros((series.n, 3))
+    dt = np.diff(t)
+    pos[1:, 0] = np.cumsum(0.5 * (vx[1:] + vx[:-1]) * dt)
+    pos[1:, 1] = np.cumsum(0.5 * (vy[1:] + vy[:-1]) * dt)
+
+    if vertical == "depth":
+        z = _fill_nan(-np.asarray(series.depth, float))
+        pos[:, 2] = z - z[0]
+        vel_w[:, 2] = np.gradient(pos[:, 2], t)
+
+    return Track(
+        t=t.copy(), xyz=pos, velocity=vel_w, quat=quat,
+        meta={"method": "model", "speed": speed if isinstance(speed, str)
+              else "array/const", "vertical": vertical,
+              "use_mag": use_mag and series.has_mag,
+              "mean_speed": float(np.mean(spd))},
+    )
+
+
 def _fill_nan(a: np.ndarray) -> np.ndarray:
     a = np.asarray(a, float).copy()
     mask = np.isfinite(a)

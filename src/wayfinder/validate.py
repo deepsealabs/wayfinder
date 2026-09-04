@@ -33,6 +33,7 @@ class Comparison:
     drift_rate: float
     path_len_ratio: float
     dtw: float
+    frechet: float
     scale: float
     n: int
     aligned_est: np.ndarray  # (M, 2) our XY after alignment
@@ -94,6 +95,27 @@ def _dtw(a: np.ndarray, b: np.ndarray) -> float:
     return float(cost[na, nb] / (na + nb))
 
 
+def _frechet(a: np.ndarray, b: np.ndarray) -> float:
+    """Discrete Fréchet ("dog-leash") distance between two 2D paths (m).
+
+    Sensitive to overall shape and ordering; the literature's preferred shape
+    metric for movement trajectories. Iterative DP to avoid deep recursion.
+    """
+    na, nb = len(a), len(b)
+    ca = np.full((na, nb), -1.0)
+    d = np.hypot(a[:, None, 0] - b[None, :, 0], a[:, None, 1] - b[None, :, 1])
+    ca[0, 0] = d[0, 0]
+    for i in range(1, na):
+        ca[i, 0] = max(ca[i - 1, 0], d[i, 0])
+    for j in range(1, nb):
+        ca[0, j] = max(ca[0, j - 1], d[0, j])
+    for i in range(1, na):
+        for j in range(1, nb):
+            ca[i, j] = max(min(ca[i - 1, j], ca[i - 1, j - 1], ca[i, j - 1]),
+                           d[i, j])
+    return float(ca[na - 1, nb - 1])
+
+
 def compare(track: Track, ref: ReferenceTrack, *, scale: bool = False,
             m: int = 1000) -> Comparison:
     """Align ``track`` to ``ref`` and compute drift/shape metrics."""
@@ -113,11 +135,16 @@ def compare(track: Track, ref: ReferenceTrack, *, scale: bool = False,
     ref_len = np.sum(np.linalg.norm(np.diff(rxy, axis=0), axis=1))
     plr = float(est_len / ref_len) if ref_len > 0 else float("nan")
 
-    dtw = _dtw(aligned, rxy)
+    # Shape metrics use O(N*M) DP; subsample to keep them fast without changing
+    # the shape meaningfully.
+    step = max(1, m // 250)
+    a_s, r_s = aligned[::step], rxy[::step]
+    dtw = _dtw(a_s, r_s)
+    frechet = _frechet(a_s, r_s)
 
     return Comparison(
         ate_rmse=ate, endpoint_err=endpoint, drift_rate=drift_rate,
-        path_len_ratio=plr, dtw=dtw, scale=float(s), n=m,
+        path_len_ratio=plr, dtw=dtw, frechet=frechet, scale=float(s), n=m,
         aligned_est=aligned, ref_xy=rxy,
         t=np.linspace(ref.t[0], ref.t[-1], m),
     )

@@ -16,14 +16,20 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+import numpy as np  # noqa: E402
+
 from wayfinder.io import parse_bin, load_reference  # noqa: E402
-from wayfinder import dead_reckon, compare  # noqa: E402
+from wayfinder import (dead_reckon, dead_reckon_model, compare,  # noqa: E402
+                       estimate_orientation, velocity)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("dir", help="directory of paired DIVE.bin / DIVE.json files")
     ap.add_argument("--plots", help="directory to write comparison PNGs into")
+    ap.add_argument("--method", choices=["model", "strapdown"], default="model")
+    ap.add_argument("--calibrate-to-ref", action="store_true",
+                    help="rescale model speed to the reference path length")
     ap.add_argument("--mag", action="store_true", help="fuse magnetometer")
     args = ap.parse_args()
 
@@ -36,7 +42,9 @@ def main() -> int:
         print(f"no .bin/.json pairs in {args.dir}", file=sys.stderr)
         return 1
 
-    hdr = f"{'dive':14s} {'min':>4s} {'ATE':>7s} {'endpt':>7s} {'drift':>6s} {'plen×':>6s} {'DTW':>6s}"
+    hdr = (f"{'dive':14s} {'min':>4s} {'ATE':>7s} {'endpt':>7s} {'drift':>6s} "
+           f"{'plen×':>6s} {'DTW':>6s} {'Fréch':>6s}")
+    print(f"method={args.method}")
     print(hdr)
     print("-" * len(hdr))
     for b, j in pairs:
@@ -47,16 +55,27 @@ def main() -> int:
         except Exception as e:  # noqa: BLE001 - corpus has a few odd exports
             print(f"{name:14s}  skip: {e}")
             continue
-        track = dead_reckon(series, use_mag=args.mag)
+        track = _reconstruct(series, ref, args)
         c = compare(track, ref)
         print(f"{name:14s} {series.duration/60:4.0f} {c.ate_rmse:7.1f} "
               f"{c.endpoint_err:7.1f} {c.drift_rate:6.2f} "
-              f"{c.path_len_ratio:6.2f} {c.dtw:6.2f}")
+              f"{c.path_len_ratio:6.2f} {c.dtw:6.2f} {c.frechet:6.1f}")
         if args.plots:
             from wayfinder.plotting import plot_comparison
             plot_comparison(track, c, title=name,
                             path=os.path.join(args.plots, f"{name}.png"))
     return 0
+
+
+def _reconstruct(series, ref, args):
+    if args.method == "strapdown":
+        return dead_reckon(series, use_mag=args.mag)
+    quat = estimate_orientation(series, use_mag=args.mag)
+    speed = velocity.cadence_speed(series)
+    if args.calibrate_to_ref:
+        ref_len = float(np.sum(np.linalg.norm(np.diff(ref.xy, axis=0), axis=1)))
+        speed = velocity.calibrate_scale(speed, series.t, ref_len)
+    return dead_reckon_model(series, quat=quat, speed=speed)
 
 
 if __name__ == "__main__":

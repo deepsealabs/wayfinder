@@ -13,7 +13,7 @@ import sys
 import numpy as np
 
 from .io import parse_bin, load_reference
-from .deadreckon import dead_reckon
+from .deadreckon import dead_reckon, dead_reckon_model
 from .validate import compare
 
 
@@ -23,14 +23,30 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--ref", help="Suunto .json export for DiveRoute validation")
     p.add_argument("--plot", help="write a comparison PNG here")
     p.add_argument("--out", help="write the reconstructed track to a CSV here")
+    p.add_argument("--method", choices=["model", "strapdown"], default="model",
+                   help="'model' = heading × velocity model (default, bounded); "
+                        "'strapdown' = double-integrate acceleration (diverges)")
+    p.add_argument("--speed-model", choices=["cadence", "constant"],
+                   default="cadence", help="velocity model (--method model)")
+    p.add_argument("--speed", type=float, default=0.25,
+                   help="forward speed m/s for --speed-model constant")
+    p.add_argument("--distance-per-kick", type=float, default=0.6,
+                   help="glide distance per fin kick, m (--speed-model cadence)")
+    p.add_argument("--calibrate-to-ref", action="store_true",
+                   help="rescale model speed so path length matches the "
+                        "reference (stand-in for the future GPS-distance "
+                        "constraint; needs --ref)")
     p.add_argument("--mag", action="store_true",
                    help="fuse the (uncalibrated) magnetometer for heading; off "
                         "by default because it currently degrades results")
     p.add_argument("--vertical", choices=["depth", "integrate"], default="depth")
-    p.add_argument("--velocity-leak", type=float, default=0.5)
-    p.add_argument("--no-zupt", action="store_true")
+    p.add_argument("--velocity-leak", type=float, default=0.5,
+                   help="strapdown drift damping (--method strapdown)")
+    p.add_argument("--no-zupt", action="store_true",
+                   help="disable ZUPT (--method strapdown)")
     p.add_argument("--scale-align", action="store_true",
-                   help="allow scale in the alignment (similarity, not rigid)")
+                   help="allow scale in the alignment (similarity, not rigid); "
+                        "the fairest shape-only comparison")
     return p
 
 
@@ -41,22 +57,23 @@ def main(argv: list[str] | None = None) -> int:
     series = parse_bin(args.bin, name=name)
     print(f"[ingest] {series!r}", file=sys.stderr)
 
-    track = dead_reckon(
-        series,
-        use_mag=args.mag,
-        velocity_leak=args.velocity_leak,
-        zupt=not args.no_zupt,
-        vertical=args.vertical,
-    )
-    print(f"[track]  path length {track.path_length:.0f} m, "
-          f"ZUPTs {track.meta['n_zupt']}", file=sys.stderr)
+    ref = load_reference(args.ref, name=name) if args.ref else None
+
+    if args.method == "strapdown":
+        track = dead_reckon(
+            series, use_mag=args.mag, velocity_leak=args.velocity_leak,
+            zupt=not args.no_zupt, vertical=args.vertical,
+        )
+    else:
+        track = _model_track(series, ref, args)
+    print(f"[track]  method={args.method} path length {track.path_length:.0f} m",
+          file=sys.stderr)
 
     if args.out:
         _write_csv(args.out, track)
         print(f"[out]    {args.out}", file=sys.stderr)
 
-    if args.ref:
-        ref = load_reference(args.ref, name=name)
+    if ref is not None:
         cmp = compare(track, ref, scale=args.scale_align)
         print(json.dumps(cmp.summary(), indent=2))
         if args.plot:
@@ -68,6 +85,25 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
 
     return 0
+
+
+def _model_track(series, ref, args):
+    """Build a model-method track, honouring the speed-model / calibration args."""
+    from . import velocity as vel
+    from .orientation import estimate_orientation
+
+    quat = estimate_orientation(series, use_mag=args.mag)
+    if args.speed_model == "constant":
+        speed = vel.constant_speed(series, args.speed)
+    else:
+        speed = vel.cadence_speed(series, distance_per_kick=args.distance_per_kick)
+
+    if args.calibrate_to_ref and ref is not None:
+        ref_len = float(np.sum(np.linalg.norm(np.diff(ref.xy, axis=0), axis=1)))
+        speed = vel.calibrate_scale(speed, series.t, ref_len)
+
+    return dead_reckon_model(series, quat=quat, speed=speed,
+                             vertical=args.vertical)
 
 
 def _write_csv(path: str, track) -> None:

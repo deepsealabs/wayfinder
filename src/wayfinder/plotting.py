@@ -45,7 +45,8 @@ def plot_comparison(track: Track, cmp: Comparison, *, title: str = "",
 
     metrics = (f"ATE {cmp.ate_rmse:.1f} m   endpoint {cmp.endpoint_err:.1f} m   "
                f"drift {cmp.drift_rate:.2f} m/min   "
-               f"path-len x{cmp.path_len_ratio:.2f}   DTW {cmp.dtw:.2f}")
+               f"path-len x{cmp.path_len_ratio:.2f}   "
+               f"DTW {cmp.dtw:.2f}   Fréchet {cmp.frechet:.1f} m")
     fig.suptitle((title + "\n" if title else "") + metrics, fontsize=11)
     fig.tight_layout()
 

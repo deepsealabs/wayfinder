@@ -8,7 +8,8 @@ import os
 import numpy as np
 import pytest
 
-from wayfinder import DiveSeries, dead_reckon, estimate_orientation, compare
+from wayfinder import (DiveSeries, dead_reckon, dead_reckon_model,
+                       estimate_orientation, compare, velocity)
 from wayfinder import quaternion as Q
 from wayfinder.io import parse_bin, load_reference
 
@@ -47,6 +48,38 @@ def test_still_dive_barely_moves():
     track = dead_reckon(s, vertical="integrate")
     # No real motion -> horizontal drift stays tiny over 20 s.
     assert track.path_length < 1.0
+
+
+def test_constant_speed_model_straight_line():
+    # Level, no rotation, constant speed -> a straight track of the right length.
+    s = _still_series(n=100, hz=10.0)  # 10 s
+    track = dead_reckon_model(s, speed="constant", speed_kw={"speed": 0.5},
+                              vertical="integrate")
+    assert track.path_length == pytest.approx(0.5 * 9.9, rel=0.05)  # v*t
+    # Heading is constant -> path is straight (all points collinear).
+    xy = track.xy
+    span = np.ptp(xy, axis=0)
+    assert min(span) < 1e-6  # zero extent on one axis
+
+
+def test_calibrate_scale_hits_target():
+    s = _still_series(n=200, hz=10.0)
+    speed = velocity.constant_speed(s, 0.3)
+    speed = velocity.calibrate_scale(speed, s.t, target_distance=42.0)
+    dist = (np.trapezoid if hasattr(np, "trapezoid") else np.trapz)(speed, s.t)
+    assert dist == pytest.approx(42.0, rel=1e-6)
+
+
+def test_cadence_detects_synthetic_kick():
+    # Synthesize a 1 Hz "kick" in accel magnitude; detector should recover ~1 Hz.
+    fs = 10.0
+    t = np.arange(600) / fs
+    kick = 1.0 + 0.3 * np.sin(2 * np.pi * 1.0 * t)  # 1 Hz on top of 1 g
+    accel = np.column_stack([np.zeros_like(t), np.zeros_like(t), kick])
+    s = DiveSeries(t, accel, np.zeros((len(t), 3)), np.full((len(t), 3), np.nan),
+                   np.zeros_like(t), name="kick")
+    cad = velocity.detect_cadence(s)
+    assert 0.8 < np.median(cad.inst_freq[cad.active]) < 1.2
 
 
 @pytest.mark.skipif(not BINS, reason="no dive fixtures available")
