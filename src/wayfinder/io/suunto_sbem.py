@@ -28,6 +28,7 @@ MAGIC = b"SBEM0103"
 
 # Chunk ids (see libdivecomputer suunto_nautic_parser.c).
 CHUNK_TIMELINE_BASE = 0x01
+CHUNK_GPS = 0x0B             # [timeDelta:2][UTC:8 ms LE][lat:int32 1e-7][lon:int32 1e-7]
 CHUNK_EXTENDED_STATUS = 0x16  # variable length; depth = float32 LE at offset 2
 CHUNK_IMU = 0x23             # 195-byte-status firmware (Nautic)
 CHUNK_IMU_ALT = 0x22         # 141-byte-status firmware (Nautic S / Ocean)
@@ -109,6 +110,7 @@ def parse_bin(path: str, name: str | None = None) -> DiveSeries:
     imu_raw: list[tuple] = []  # 9x int16
     depth_t: list[int] = []
     depth_m: list[float] = []
+    gps: list[dict] = []
 
     for cid, payload in _walk(data, profile_size):
         if cid != CHUNK_TIMELINE_BASE and len(payload) >= 2:
@@ -121,6 +123,15 @@ def parse_bin(path: str, name: str | None = None) -> DiveSeries:
         elif cid == CHUNK_EXTENDED_STATUS and len(payload) >= 6:
             depth_t.append(t_ms)
             depth_m.append(struct.unpack_from("<f", payload, 2)[0])
+        elif cid == CHUNK_GPS and len(payload) >= 18:
+            # Real surface GPS fixes -- preserved in the raw download (the .json
+            # export scrubs these). lat/lon are int32 * 1e-7 degrees.
+            gps.append({
+                "t_ms": t_ms,
+                "utc_ms": struct.unpack_from("<Q", payload, 2)[0],
+                "lat": struct.unpack_from("<i", payload, 10)[0] / 1e7,
+                "lon": struct.unpack_from("<i", payload, 14)[0] / 1e7,
+            })
 
     if not imu_t:
         raise ValueError(f"{path}: no IMU chunks (0x22/0x23) found")
@@ -137,11 +148,16 @@ def parse_bin(path: str, name: str | None = None) -> DiveSeries:
     depth = _interp_depth(imu_t_arr, np.asarray(depth_t, float),
                           np.asarray(depth_m, float))
 
+    # GPS fix times relative to the IMU start, matching series.t.
+    t0_ms = imu_t_arr[0]
+    for g in gps:
+        g["t"] = (g["t_ms"] - t0_ms) / 1000.0
+
     return DiveSeries(
         t=t, accel=accel, gyro=gyro, mag=mag, depth=depth,
         name=name, gyro_bias=None,
         meta={"source": "suunto_sbem", "path": path,
-              "n_depth_raw": len(depth_t)},
+              "n_depth_raw": len(depth_t), "gps": gps},
     )
 
 

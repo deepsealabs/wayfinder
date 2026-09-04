@@ -48,3 +48,27 @@ def test_parse_real_dive():
     amag = np.linalg.norm(series.accel, axis=1)
     assert 0.8 < np.median(amag) < 1.2            # accel ≈ 1 g -> scale sane
     assert np.nanmax(series.depth) > 1.0          # a real dive has depth
+
+
+@pytest.mark.skipif(not FIXTURES, reason="no dive fixtures available")
+def test_real_gps_is_preserved():
+    """The raw .bin keeps real surface GPS (the .json export scrubs it)."""
+    from wayfinder import gps as G
+
+    got = False
+    for path in FIXTURES:
+        try:
+            series = parse_bin(path)
+        except ValueError:
+            continue  # partial capture with no IMU
+        fixes = series.meta.get("gps", [])
+        if not fixes:
+            continue
+        got = True
+        lats = [f["lat"] for f in fixes]
+        lons = [f["lon"] for f in fixes]
+        # Real coordinates span the globe, not the scrubbed near-null point.
+        assert any(abs(a) > 5 or abs(o) > 5 for a, o in zip(lats, lons))
+        _t, xy, _origin = G.to_enu(fixes)
+        assert xy.shape == (len(fixes), 2)
+    assert got, "no dive in the corpus had GPS chunks"
